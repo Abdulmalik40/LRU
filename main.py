@@ -15,17 +15,47 @@ for raw in sys.stdin:
         cap = int(parts[1])
     elif cmd == "ACCESS":
         k = parts[1]
-        # TODO: update all three caches for this access, on the same key `k`.
-        # - LRU (`lru`, an OrderedDict): hit if k already present (move it to
-        #   the MRU end, count in lru_h); else miss -> insert k, evicting the
-        #   least-recently-used entry first if at capacity (`cap`).
-        # - FIFO (`fifo` deque + `fifo_set`): hit if k already present (count
-        #   in fifo_h); else miss -> append k, evicting the oldest-inserted
-        #   entry first if at capacity.
-        # - LFU (`lfu` + `lfu_freq`): hit if k already present (bump its
-        #   frequency, count in lfu_h); else miss -> insert with frequency 1,
-        #   evicting the lowest-frequency entry first if at capacity.
-        pass
+        if cap <= 0:
+            continue
+
+        # ---- LRU ----
+        if k in lru:
+            lru.move_to_end(k)
+            lru_h += 1
+        else:
+            if len(lru) >= cap:
+                lru.popitem(last=False)
+            lru[k] = None
+
+        # ---- FIFO ----
+        if k in fifo_set:
+            fifo_h += 1
+        else:
+            if len(fifo) >= cap:
+                old = fifo.popleft()
+                fifo_set.discard(old)
+            fifo.append(k)
+            fifo_set.add(k)
+
+        # ---- LFU ----
+        if k in lfu:
+            f = lfu[k]
+            lfu_freq[f].discard(k)
+            if not lfu_freq[f]:
+                del lfu_freq[f]
+            lfu[k] = f + 1
+            lfu_freq.setdefault(f + 1, set()).add(k)
+            lfu_h += 1
+        else:
+            if len(lfu) >= cap:
+                min_f = min(lfu_freq)
+                victim = next(iter(lfu_freq[min_f]))
+                lfu_freq[min_f].discard(victim)
+                if not lfu_freq[min_f]:
+                    del lfu_freq[min_f]
+                del lfu[victim]
+            lfu[k] = 1
+            lfu_freq.setdefault(1, set()).add(k)
     elif cmd == "STATS":
         out.append(f"lru_hits={lru_h} fifo_hits={fifo_h} lfu_hits={lfu_h}")
 
